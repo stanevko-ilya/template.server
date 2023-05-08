@@ -4,6 +4,7 @@ const path = require('path');
 const body_parser = require('body-parser');
 const http = require('http');
 const https = require('https');
+const useragent = require('useragent');
 
 const { logger } = require('../modules');
 
@@ -71,9 +72,35 @@ class API {
         // res
         res.module = module;
 
-        // req
-        req.user = {};
-        req.user.ip = req.ip.substr(0, 7) === '::ffff:' ? req.ip.substr(7) : req.ip;
+        // Контейнер
+        req.container_data = req.method === 'POST' ? 'body' : 'query';
+
+        // Данные отправителя
+        const useragent_parsed = useragent.parse(req.get('User-Agent')).toJSON();
+        req.user = {
+            ip: req.ip.substr(0, 7) === '::ffff:' ? req.ip.substr(7) : req.ip,
+            user_agent: {
+                browser: useragent_parsed.family,
+                device: useragent_parsed.device.family,
+                os: useragent_parsed.os.family
+            }
+        };
+
+        // Конфиг запроса
+        req.config = {};
+
+        const split_url = req.originalUrl.split('?')[0].split('/');
+        if (split_url[0] === '') split_url.splice(0, 1);
+        const split_sub_url = this.config.sub_url.split('/');
+
+        if (split_sub_url.toString() === split_url.slice(0, split_sub_url.length).toString()) {
+            req.config.found = true;
+            const method_path = path.join(__dirname, `methods/${split_url.slice(split_sub_url.length).join('/')}/index.js`);
+            if (fs.existsSync(method_path)) req.config = { ...req.config, ...require(method_path).config };
+        }
+
+        // Будет ли залогирован запрос
+        req.log = res.module.config.logging && req.config.found;
         
         next();
     }
@@ -87,15 +114,94 @@ class API {
         next();
     }
 
+    /**
+     * 
+     * @param {Object} req 
+     * @param {Object} res 
+     * @param {String[]} params 
+     * @param {Boolean} error 
+     */
+    params(req, res, params, error=true) {
+        const not_found = [];
+        const body = req.method === 'POST' ? req.body : req.method === 'GET' ? req.query : {};
+        for (let i = 0; i < params.length; i++) {
+            if (!(params[i] in body)) {
+                not_found.push(params[i]);
+                break; // Закомментируйте, если хотите получить полный список не найденных обязательных параметров
+            }
+        }
+        if (not_found.length > 0 && error) API.send(res, { code: 1, message: `Param \`${not_found[0]}\` not found` }, 400);
+        return { result: not_found.length === 0, not_found: not_found }
+    }
+
     /** Проверка запроса */
     checker_request(req, res, next) {
-        // console.log(req, res);
-        next();
+        if (req.config.found) {
+            let config_params = [];
+            if ('params' in req.config) config_params = req.config.params;
+
+            const required_params = [];
+            const add_required_param = name => required_params.push(name);
+            const change_value = (name, format) => {
+                if (typeof(format) === 'function' && name in req[req.container_data])
+                    req[req.container_data][name] = format(req[req.container_data][name]);
+            };
+            
+            for (let i = 0; i < config_params.length; i++) {
+                const param = config_params[i];
+                switch (typeof(param)) {
+                    case 'object':
+                        if (param.required) add_required_param(param.name);
+                        
+                        let format;
+                        switch (param.type) {
+                            case 'boolean':
+                                format = value => Number.parseInt(value) === 1;
+                            break;
+
+                            case 'number':
+                                format = value => {
+                                    value = +value;
+                                    if (
+                                        (param.orientation === 'positive' && value < 0)
+                                        ||
+                                        (param.orientation === 'negative' && value > 0)
+                                    )
+                                        value *= -1;
+                                    return value;
+                                };
+                            break;
+
+                            case 'object':
+                                format = value => {
+                                    let return_value;
+                                    try {
+                                        return_value = JSON.parse(value);
+                                    } catch (e) {
+                                        this.send();
+                                    }
+                                    return return_value;
+                                };
+                            break;
+
+                            default:
+                                format = value => value;
+                        }
+                        change_value(param.name, format);
+                    break;
+
+                    case 'string':
+                        add_required_param(param);
+                    break;
+                }
+            }
+            if (res.module.params(req, res, required_params, true).result) next();
+        } else next();
     }
 
     /** Логирование запросов */
     log(req, res, next) {
-        if (res.module.config.logging) {
+        if (req.log) {
             logger.log('info', `API | ${req.originalUrl} | ${req.user.ip}`);
             try {
                 next();
