@@ -5,7 +5,7 @@ const custom_interface = require('./custom_interface');
 const path = require('path');
 const chalk = require('@kitsune-labs/chalk-node');
 
-const logger_config = path.join(__dirname, '../api/config.json');
+const logger_config = path.join(__dirname, '../logger/config.json');
 const api_config = path.join(__dirname, '../api/config.json');
 
 const interface = {
@@ -57,6 +57,7 @@ const interface = {
 
     api: {
         status_system: () => api.is_listen(),
+        ...require('../api/methods_interface'),
         on: new Command('on', 'Включить систему API', ({ manager }) => {
             if (!api.is_listen()) {
                 api.start();
@@ -94,6 +95,7 @@ const interface = {
         manager.output('info', 'Выключение');
         process.exit();
     }),
+
     ...custom_interface
 }
 

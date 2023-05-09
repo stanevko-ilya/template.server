@@ -1,5 +1,4 @@
 const chalk = require('@kitsune-labs/chalk-node');
-const config = require('./config.json');
 const Command = require('./command');
 const ConsoleTable = require('cli-table');
 
@@ -7,6 +6,9 @@ const prompt = require('prompt');
 prompt.delimiter = '';
 
 class Manager {
+
+    /** Конфиг */
+    config = require('./config.json');
 
     /** Интерфейс управления */
     #interface = {};
@@ -51,8 +53,8 @@ class Manager {
                 const keys = Object.keys(local_interface);
                 for (let i = 0; i < keys.length; i++) {
                     const key = keys[i];
-                    if (config.hide_keys.indexOf(key) === -1) {
-                        const string = `${`|${` `.repeat(config.space_size)}`.repeat(level)}|—— ${local_interface[key] instanceof Command ? local_interface[key].info() : typeof(local_interface[key]) === 'object' ? `${chalk.cyan(key)}: Модуль` : `${chalk.red(key)}: unknow`}`;
+                    if (this.config.hide_keys.indexOf(key) === -1) {
+                        const string = `${`|${` `.repeat(this.config.space_size)}`.repeat(level)}|—— ${local_interface[key] instanceof Command ? local_interface[key].info() : typeof(local_interface[key]) === 'object' ? `${chalk.cyan(key)}: Модуль` : `${chalk.red(key)}: unknow`}`;
                         strings.push(string);
                         if (!(local_interface[key] instanceof Command) && flags['-f']) inside(local_interface[key], level + 1);
                     }
@@ -103,12 +105,12 @@ class Manager {
             const inside = (local_interface, path='') => {
                 for (const key in local_interface) {
                     if (typeof(local_interface[key]) === 'object' && local_interface[key] !== null && !(local_interface[key] instanceof Command)) {
+                        const full_path = `${path}${key}`;
                         if ('status_system' in local_interface[key] && typeof(local_interface[key].status_system) === 'function') {
-                            const full_path = `${path}${key}`;
                             systems.push([ full_path, local_interface[key].status_system() ? 'on' : 'off' ]);
                             systems[systems.length - 1][1] = chalk[systems[systems.length - 1][1] === 'on' ? 'green' : 'red'](systems[systems.length - 1][1].toUpperCase());
-                            inside(local_interface[key], `${full_path}.`);
                         }
+                        inside(local_interface[key], `${full_path}.`);
                     }
                 }
             }
@@ -140,7 +142,7 @@ class Manager {
      */
     output(level, message) {
         const level_str = typeof(level) === 'string' ? `[${chalk[level === 'error' ? 'red' : level === 'warn' ? 'yellow' : 'blueBright'](level.toUpperCase())}]` : '';
-        const print = str => console.log(config.format.replace('%level%', level_str).replace('%message%', str));
+        const print = str => console.log(this.config.format.replace('%level%', level_str).replace('%message%', str));
 
         if (Array.isArray(message)) message.map(print);
         else print(message);
@@ -157,7 +159,7 @@ class Manager {
 
     /** Прослушивание ввода */
     #listen() {
-        prompt.message = `${this.cursor === '' ? 'ROOT' : this.cursor} `;
+        prompt.message = `${this.cursor === '' ? this.config.root : this.cursor} `;
         prompt.get({ message: '>' }, (err, result) => {
             if (result === undefined) console.log(''); 
             else this.#process(result.question);

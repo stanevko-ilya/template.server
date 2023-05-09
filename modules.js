@@ -9,13 +9,11 @@ logger.log('info', 'Сервер запущен');
 
 // Подключение системы API
 const API = require('./api');
-const api = new API();
-module.exports.api = api;
-api.start();
+module.exports.api = new API();
+module.exports.api.start();
 
 // Подключение менеджера команд
 const Manager = require('./console_manager');
-const manager = new Manager();
-module.exports.manager = manager;
-manager.exec('clear');
-manager.start();
+module.exports.manager = new Manager();
+module.exports.manager.exec('clear');
+module.exports.manager.start();

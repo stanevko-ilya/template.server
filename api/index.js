@@ -7,6 +7,8 @@ const https = require('https');
 const useragent = require('useragent');
 
 const { logger } = require('../modules');
+const custom_interface = require('../console_manager/custom_interface');
+const Command = require('../console_manager/command');
 
 class API {
     config = require('./config.json');
@@ -41,12 +43,37 @@ class API {
     }
 
     #init_methods() {
-        const inside = (file_path, api_path) => {
+        const inside = (file_path, api_path, container_interface) => {
+            const name = file_path.split('/').reverse()[0];
+            if (!(name in container_interface)) container_interface[name] = {};
+
             const is_method = fs.existsSync(path.join(file_path, 'index.js'));
-            if (is_method) require(file_path)?.router(api_path, this.#express);
-            else fs.readdirSync(file_path, { withFileTypes: true }).filter(item => item.isDirectory()).map(dir => inside(path.join(file_path, dir.name), path.join(api_path, dir.name)));
+            if (is_method) {
+                const method = require(file_path);
+                method?.router(api_path, this.#express);
+
+                container_interface[name] = {
+                    status_system: () => method.config.use,
+                    on: new Command('on', 'Включить метод', ({ manager }) => {
+                        if (!method.config.use) {
+                            method.config.use = true;
+                            logger.log('info', `${file_path} включен`);
+                            manager.output('info', 'Метод включен');
+                        } else manager.output('warn', 'Метод уже запущен');
+                    }),
+                    off: new Command('off', 'Отключить метод', ({ manager }) => {
+                        if (method.config.use) {
+                            method.config.use = false;
+                            logger.log('info', `${file_path} отключен`);
+                            manager.output('info', 'Метод отключен');
+                        } else manager.output('warn', 'Метод уже отключен');
+                    }),
+                    config: new Command('config', 'Получить настройки метода', ({ manager }) => manager.output(null, JSON.stringify(method.config, null, 4)))
+                }
+            } else fs.readdirSync(file_path, { withFileTypes: true }).filter(item => item.isDirectory()).map(dir => inside(path.join(file_path, dir.name), path.join(api_path, dir.name), container_interface[name]));
         }
-        inside(path.join(__dirname, 'methods'), `/${this.config.sub_url ? `${this.config.sub_url}/` : ''}`);
+
+        inside(path.join(__dirname, 'methods'), `/${this.config.sub_url ? `${this.config.sub_url}/` : ''}`, require('./methods_interface'));
     }
 
     /** Данные для связи с SSL */
@@ -137,65 +164,67 @@ class API {
     /** Проверка запроса */
     checker_request(req, res, next) {
         if (req.config.found) {
-            let config_params = [];
-            if ('params' in req.config) config_params = req.config.params;
-
-            const required_params = [];
-            const add_required_param = name => required_params.push(name);
-            const change_value = (name, format) => {
-                if (typeof(format) === 'function' && name in req[req.container_data])
-                    req[req.container_data][name] = format(req[req.container_data][name]);
-            };
-            
-            for (let i = 0; i < config_params.length; i++) {
-                const param = config_params[i];
-                switch (typeof(param)) {
-                    case 'object':
-                        if (param.required) add_required_param(param.name);
-                        
-                        let format;
-                        switch (param.type) {
-                            case 'boolean':
-                                format = value => Number.parseInt(value) === 1;
-                            break;
-
-                            case 'number':
-                                format = value => {
-                                    value = +value;
-                                    if (
-                                        (param.orientation === 'positive' && value < 0)
-                                        ||
-                                        (param.orientation === 'negative' && value > 0)
-                                    )
-                                        value *= -1;
-                                    return value;
-                                };
-                            break;
-
-                            case 'object':
-                                format = value => {
-                                    let return_value;
-                                    try {
-                                        return_value = JSON.parse(value);
-                                    } catch (e) {
-                                        this.send();
-                                    }
-                                    return return_value;
-                                };
-                            break;
-
-                            default:
-                                format = value => value;
-                        }
-                        change_value(param.name, format);
-                    break;
-
-                    case 'string':
-                        add_required_param(param);
-                    break;
+            if (req.config.use) {
+                let config_params = [];
+                if ('params' in req.config) config_params = req.config.params;
+    
+                const required_params = [];
+                const add_required_param = name => required_params.push(name);
+                const change_value = (name, format) => {
+                    if (typeof(format) === 'function' && name in req[req.container_data])
+                        req[req.container_data][name] = format(req[req.container_data][name]);
+                };
+                
+                for (let i = 0; i < config_params.length; i++) {
+                    const param = config_params[i];
+                    switch (typeof(param)) {
+                        case 'object':
+                            if (param.required) add_required_param(param.name);
+                            
+                            let format;
+                            switch (param.type) {
+                                case 'boolean':
+                                    format = value => Number.parseInt(value) === 1;
+                                break;
+    
+                                case 'number':
+                                    format = value => {
+                                        value = +value;
+                                        if (
+                                            (param.orientation === 'positive' && value < 0)
+                                            ||
+                                            (param.orientation === 'negative' && value > 0)
+                                        )
+                                            value *= -1;
+                                        return value;
+                                    };
+                                break;
+    
+                                case 'object':
+                                    format = value => {
+                                        let return_value;
+                                        try {
+                                            return_value = JSON.parse(value);
+                                        } catch (e) {
+                                            this.send();
+                                        }
+                                        return return_value;
+                                    };
+                                break;
+    
+                                default:
+                                    format = value => value;
+                            }
+                            change_value(param.name, format);
+                        break;
+    
+                        case 'string':
+                            add_required_param(param);
+                        break;
+                    }
                 }
-            }
-            if (res.module.params(req, res, required_params, true).result) next();
+                if (res.module.params(req, res, required_params, true).result) next();
+            } else API.send(res, 'Метод отключен', 404)
         } else next();
     }
 
