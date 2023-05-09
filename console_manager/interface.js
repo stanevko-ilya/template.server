@@ -1,6 +1,6 @@
 const fs = require('fs');
 const Command = require('./command');
-const { logger, api } = require('../modules');
+const { logger, api, db } = require('../modules');
 const custom_interface = require('./custom_interface');
 const path = require('path');
 const chalk = require('@kitsune-labs/chalk-node');
@@ -91,10 +91,61 @@ const interface = {
             flags: [{ name: '-d', description: 'Также поменять значение порта по умолчанию, в конфиге' }]
         })
     },
-    shutdown: new Command('shutdown', 'Отключить сервер', ({ manager }) => {
-        manager.output('info', 'Выключение');
-        process.exit();
-    }),
+
+    db: {
+        status_system: () => db.is_work(),
+        on: new Command('on', 'Включить систему БД', ({ manager }) => {
+            if (!db.is_work()) {
+                db.start();
+                manager.output('info', 'Система БД запускается. Используйте "status" для проверки состояния.');
+            } else manager.output('warn', 'Система API уже включена');
+        }),
+        off: new Command('off', 'Отключить систему БД', ({ manager }) => {
+            if (db.is_work()) {
+                db.stop();
+                manager.output('info', 'Система БД отключена');
+            } else manager.output('warn', 'Система БД уже отключена');
+        }),
+        req: new Command('req', 'Запрос к базе данных', async ({ manager, enter }) => {
+            if (db.is_work()) {
+                enter = enter.split(' ').slice(1).join(' ').replace(/ /g, '').split('.');
+    
+                if (enter[0] === 'db') {
+                    if (enter[1] in db.models) {
+                        const model = db.models[enter[1]];
+    
+                        let str = enter[2];
+                        if (str[str.length - 1] === ')') str = str.substring(0, str.length - 1)
+                        const split = str.replace('(', ' ').split(' ');
+                        const func = split[0];
+                        if (func in model && typeof(model[func]) === 'function') {
+                            const parameters_string = split[1];
+                            const parameters_array = [];
+
+                            const counter = { '{': 0, '}': 0 };
+                            let start_index = 0;
+                            for (let i = 0; i < parameters_string.length; i++) {
+                                const element = parameters_string[i];
+                                if ([ '{', '}' ].indexOf(element) !== -1) counter[element]++;
+                                if (counter['{'] === counter['}']) {
+                                    if (counter['{'] !== 0) {
+                                        parameters_array.push(JSON.parse(parameters_string.substring(start_index, i + 1)));
+    
+                                        counter['{'] = 0;
+                                        counter['}'] = 0;
+                                    }
+                                    
+                                    start_index = i + 1;
+                                }
+                            }
+
+                            manager.output(null, await model[func](...parameters_array));
+                        } else manager.output('error', `"${func}" не является функцией схемы`);
+                    } else manager.output('error', `"${enter[1]}" неопределенно в схемах`);
+                } else manager.output('error', 'Неверный синтаксис');
+            } else manager.output('error', 'Система БД не запущена');
+        }, { parameters: [{ name: 'request', description: 'Запрос, который необходимо выполнить к БД. Используйте синтаксис MongoDBCompass', required: true }] })
+    },
 
     ...custom_interface
 }

@@ -3,6 +3,7 @@ const Command = require('./command');
 const ConsoleTable = require('cli-table');
 
 const prompt = require('prompt');
+const { logger } = require('../modules');
 prompt.delimiter = '';
 
 class Manager {
@@ -124,7 +125,12 @@ class Manager {
                 }).toString()
             );
             manager.output(null, strings);
-        })
+        }),
+        new Command('shutdown', 'Отключить сервер', ({ manager }) => {
+            manager.output('info', 'Отключение...');
+            logger.log('info', 'Сервер отключен');
+            process.exit();
+        }),
     ];
 
     /**
@@ -160,18 +166,18 @@ class Manager {
     /** Прослушивание ввода */
     #listen() {
         prompt.message = `${this.cursor === '' ? this.config.root : this.cursor} `;
-        prompt.get({ message: '>' }, (err, result) => {
+        prompt.get({ message: '>' }, async (err, result) => {
             if (result === undefined) console.log(''); 
-            else this.#process(result.question);
+            else await this.#process(result.question);
             if (this.#listening) this.#listen();
         });
     }
 
     /** Обработка ввода */
-    #process(enter='') {
+    async #process(enter='') {
+        const start_enter = enter;
         enter = enter.replace(/ +/g, ' ');
-        if (enter[enter.length - 1] === ' ') enter = enter.substring(0, enter.length - 1);
-        enter = enter.split(' ');
+        enter = enter.substring(Number(enter[0] === ' '), enter.length - Number(enter[enter.length - 1] === ' ')).split(' ');
 
         const current_interface = this.get_current_interface();
         const commands = [...this.#global_commands];
@@ -223,10 +229,11 @@ class Manager {
 
                 if (required.length === 0) {
                     try {
-                        command.use({
+                        await command.use({
                             parameters, flags,
                             current_interface,
-                            manager: this
+                            manager: this,
+                            enter: start_enter
                         });
                     } catch (e) {
                         this.output('error', 'Ошибка во время выполнения команды');
@@ -246,7 +253,7 @@ class Manager {
      * @param {String} command Команда для выполнения
      * @description Выполнения консольной команды в менеджере 
      */
-    exec(command) { this.#process(command) }
+    async exec(command) { await this.#process(command) }
 
     /**
      * 

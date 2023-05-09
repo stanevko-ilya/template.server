@@ -2,10 +2,13 @@ const path = require('path');
 
 // Подключение системы логирования
 const Logger = require('./logger');
-const logger = new Logger(path.join(__dirname, './logger/logs'));
-module.exports.logger = logger;
-logger.start();
-logger.log('info', 'Сервер запущен');
+module.exports.logger = new Logger(path.join(__dirname, './logger/logs'));;
+module.exports.logger.start();
+
+// Подключение системы базы данных
+const DB = require('./db');
+module.exports.db = new DB();
+module.exports.db.start();
 
 // Подключение системы API
 const API = require('./api');
