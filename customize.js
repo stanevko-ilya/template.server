@@ -1,5 +1,5 @@
 // Number
-Number.prototype.toStringWithZeros = function () { return this < 10 ? `0${this}` : this.toString() };
+Number.prototype.toStringWithZeros = function () { return Number.isInteger(this) && 0 <= this < 10 ? `0${this}` : this.toString() };
 
 // Array
 Array.prototype.isEmpty = function () { return this.length === 0 };
