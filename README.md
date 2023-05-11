@@ -14,7 +14,7 @@ $ npm i -d
 `npm start` или `node index.js`
 
 ## Использование
-Проект уже имеет 4 заготовленных модулей, которые скорее всего Вам пригодятся
+Проект уже имеет 4 заготовленных модуля, которые скорее всего Вам пригодятся
 1. [Система логирования](https://github.com/stanevko-ilya/template.server/tree/master/logger) - позволяет вести логирование действий, которые происходят на сервер
 2. [Система API](https://github.com/stanevko-ilya/template.server/tree/master/api) - используется для создание api
 3. [Система БД](https://github.com/stanevko-ilya/template.server/tree/master/db) - используется для запросов к mongoDB
